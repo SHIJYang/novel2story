@@ -178,6 +178,40 @@ function detectTransition(text) {
   return null
 }
 
+/** 按章节标题分割原始文本，返回 [{title, content}] */
+export function splitIntoChapterTexts(text) {
+  if (!text || !text.trim()) return []
+
+  const lines = text.split('\n')
+  const chapters = []
+  let current = { title: '', lines: [] }
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (detectChapterHeader(trimmed)) {
+      if (current.lines.length > 0 || current.title) {
+        chapters.push({ title: current.title, content: current.lines.join('\n').trim() })
+      }
+      current = { title: trimmed, lines: [] }
+    } else if (trimmed) {
+      current.lines.push(line)
+    } else {
+      // 保留空白行作为段落分隔
+      current.lines.push(line)
+    }
+  }
+  if (current.lines.length > 0 || current.title) {
+    chapters.push({ title: current.title, content: current.lines.join('\n').trim() })
+  }
+
+  // 如果完全没有章节标题，整段作为一章
+  if (chapters.length === 0 && lines.length > 0) {
+    chapters.push({ title: '未命名章节', content: text.trim() })
+  }
+
+  return chapters
+}
+
 export function generateSceneHeading(location, time) {
   const intExt = location.match(/外|户外|露天|花园|街道|马路|广场|公园|海边|山上|田野|森林/) ? 'EXT' : 'INT'
   return `${intExt}. ${location || '未知地点'} - ${time || '不确定时间'}`
