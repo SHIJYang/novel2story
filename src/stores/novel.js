@@ -76,8 +76,12 @@ export const useNovelStore = defineStore('novel', {
     /* ===== 文本 → 章节解析 ===== */
     setNovelText(text) {
       this.novelText = text
-      this.chapterTexts = splitIntoChapterTexts(text)
-      this.chapterCount = this.chapterTexts.length
+      const result = splitIntoChapterTexts(text)
+      this.chapterTexts = result.chapters
+      this.chapterCount = result.chapters.length
+      if (result.novelTitle && !this.metadata.title) {
+        this.metadata.title = result.novelTitle
+      }
       this.chapters = parseNovel(text)
       this.error = null
       this._save()
@@ -158,8 +162,12 @@ export const useNovelStore = defineStore('novel', {
         .join('\n\n')
 
       this.novelText = text
-      this.chapterTexts = splitIntoChapterTexts(text)
-      this.chapterCount = this.chapterTexts.length
+      const result = splitIntoChapterTexts(text)
+      this.chapterTexts = result.chapters
+      this.chapterCount = result.chapters.length
+      if (result.novelTitle && !this.metadata.title) {
+        this.metadata.title = result.novelTitle
+      }
       this.chapters = parseNovel(text)
       this.inputMode = 'chapters'
       this.error = null

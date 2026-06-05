@@ -100,6 +100,11 @@ function detectChapterHeader(line) {
   return null
 }
 
+/** 去掉行首 # 号和空白，保留剩余文本作为章节标题 */
+function stripChapterMarks(line) {
+  return line.replace(/^[#]+\s*/, '').trim()
+}
+
 function parseParagraphs(lines) {
   return lines.map(line => parseParagraph(line)).filter(Boolean)
 }
@@ -178,38 +183,69 @@ function detectTransition(text) {
   return null
 }
 
-/** 按章节标题分割原始文本，返回 [{title, content}] */
+/** 按章节标题分割原始文本，返回 { chapters, novelTitle }
+ *  novelTitle：正文前独立一行的小说名，自动识别 */
 export function splitIntoChapterTexts(text) {
-  if (!text || !text.trim()) return []
+  if (!text || !text.trim()) return { chapters: [], novelTitle: '' }
 
   const lines = text.split('\n')
+  const nonEmpty = lines.map(l => l.trim()).filter(Boolean)
   const chapters = []
   let current = { title: '', lines: [] }
+  let novelTitle = ''
+  let novelTitleConsumed = false
 
-  for (const line of lines) {
-    const trimmed = line.trim()
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim()
+
     if (detectChapterHeader(trimmed)) {
+     
+      if (!novelTitleConsumed && current.lines.length === 1) {
+        const first = current.lines[0].trim()
+        if (first.length >= 2 && first.length <= 30 && !detectChapterHeader(first)) {
+          novelTitle = first
+          novelTitleConsumed = true
+          current = { title: stripChapterMarks(trimmed), lines: [] }
+          continue
+        }
+      }
       if (current.lines.length > 0 || current.title) {
         chapters.push({ title: current.title, content: current.lines.join('\n').trim() })
       }
-      current = { title: trimmed, lines: [] }
-    } else if (trimmed) {
-      current.lines.push(line)
+      current = { title: stripChapterMarks(trimmed), lines: [] }
+      continue
+    }
+
+    // 第一行非空文本比较短，且后面跟着章节标题 → 视为小说名
+    if (!novelTitleConsumed && trimmed && trimmed.length >= 2 && trimmed.length <= 30) {
+      // 检查后面是否有关键章（往下最多看 5 行）
+      let hasChapterAhead = false
+      for (let j = i + 1; j <= Math.min(i + 5, lines.length - 1); j++) {
+        if (detectChapterHeader(lines[j].trim())) { hasChapterAhead = true; break }
+      }
+      if (hasChapterAhead) {
+        novelTitle = trimmed
+        novelTitleConsumed = true
+        continue
+      }
+    }
+
+    if (trimmed || novelTitleConsumed) {
+      current.lines.push(lines[i])
     } else {
-      // 保留空白行作为段落分隔
-      current.lines.push(line)
+      current.lines.push(lines[i])
     }
   }
+
   if (current.lines.length > 0 || current.title) {
     chapters.push({ title: current.title, content: current.lines.join('\n').trim() })
   }
 
-  // 如果完全没有章节标题，整段作为一章
   if (chapters.length === 0 && lines.length > 0) {
     chapters.push({ title: '未命名章节', content: text.trim() })
   }
 
-  return chapters
+  return { chapters, novelTitle }
 }
 
 export function generateSceneHeading(location, time) {
