@@ -1,0 +1,31 @@
+# --- 依赖 ---
+node_modules/
+
+# --- 构建产物 ---
+dist/
+
+# --- IDE / 编辑器 ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# --- 环境变量 / 密钥 ---
+.env
+.env.local
+.env.*.local
+
+# --- 日志 ---
+*.log
+npm-debug.log*
+
+# --- 操作系统 ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- 缓存 ---
+.turbo/
+.cache/
