@@ -95,38 +95,115 @@
         <div class="panel">
           <div class="panel-title">
             <span>🎬 剧本预览</span>
-            <el-tag size="small" type="primary" effect="plain">YAML 格式</el-tag>
           </div>
 
           <!-- 工具栏 -->
           <div class="output-toolbar">
             <div class="toolbar-left">
-              <el-button type="primary" :loading="store.isConverting" :disabled="store.chapterCount < 3" size="default"
-                @click="startAIConvert">
-                {{ store.isConverting ? '转换中...' : '🤖 AI 转换' }}
-              </el-button>
-              <el-button size="default" :disabled="!store.hasResult" @click="runLocalConvert">
-                ⚙️ 本地转换
-              </el-button>
+              <el-dropdown @command="handleConvertCommand" :disabled="store.isConverting">
+                <el-button type="primary" :loading="store.isConverting" :disabled="store.chapterCount < 3">
+                  {{ convertButtonText }}
+                  <el-icon class="el-icon--right">
+                    <ArrowDown />
+                  </el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="smart">
+                      🤖 智能转换（推荐）
+                      <span style="font-size:12px;color:#999;">自动选择全量/增量</span>
+                    </el-dropdown-item>
+                    <el-dropdown-item command="full">📦 全量转换（全部章节）</el-dropdown-item>
+                    <el-dropdown-item command="incremental" :disabled="!store.canContinueConvert">
+                      🔄 增量转换（仅新章节）
+                    </el-dropdown-item>
+                    <el-dropdown-item divided command="local">
+                      ⚙️ 本地转换（规则引擎）
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
               <el-button size="default" :disabled="!store.yamlOutput" @click="downloadYaml">
                 ⬇️ 下载 YAML
               </el-button>
             </div>
             <div class="toolbar-right">
-              <el-input v-model="store.apiKey" type="password" size="small" placeholder="OpenAI API Key" show-password
-                clearable style="width:180px" @input="(v) => store.setApiKey(v)" />
+              <el-input v-model="store.apiKey" type="password" size="small" placeholder="API Key" show-password
+                clearable style="width:140px" @input="(v) => store.setApiKey(v)" />
               <el-checkbox :model-value="store.rememberKey" size="small" @change="(v) => store.setRememberKey(v)">
                 记住
               </el-checkbox>
-              <el-select :model-value="store.model" size="small" style="width:135px" @change="(v) => store.setModel(v)">
-                <el-option label="GPT-3.5-turbo" value="gpt-3.5-turbo" />
-                <el-option label="GPT-4-turbo" value="gpt-4-turbo" />
-              </el-select>
+
+              <div class="config-row">
+                <span class="config-hint">
+                  {{ store.incrementalMode ? '分章依次转换，已转章节总结为摘要' : '整本一次性转换' }}
+                </span>
+                <el-switch :model-value="store.incrementalMode" size="small" @change="store.setIncrementalMode" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 转换进度提示 -->
+          <div v-if="store.isConverting && store.convertProgress > 0" class="progress-bar">
+            <el-progress :percentage="store.convertProgress" :stroke-width="6" :show-text="false" />
+            <div class="progress-text">{{ store.currentConvertingChapter }}</div>
+          </div>
+
+          <!-- 全局角色表 -->
+          <div v-if="store.hasResult && store.characters.length > 0" class="char-table-section">
+            <div class="char-table-header" @click="charTableExpanded = !charTableExpanded">
+              <div class="char-table-title">
+                👥 全局角色表
+                <el-tag size="small" type="success" effect="plain" style="margin-left:6px">
+                  {{ store.characters.length }} 人
+                </el-tag>
+              </div>
+              <div class="char-table-subtitle">各场景引用的角色 ID 全局统一，修改后自动同步</div>
+              <el-icon class="collapse-icon" :class="{ rotated: charTableExpanded }">
+                <ArrowDown />
+              </el-icon>
+            </div>
+            <div v-show="charTableExpanded" class="char-table-body">
+              <el-table :data="localChars" size="small" border stripe max-height="240" style="width:100%">
+                <el-table-column type="index" label="#" width="44" align="center" />
+                <el-table-column prop="id" label="ID" width="88">
+                  <template #default="{ row }">
+                    <code class="char-id">{{ row.id }}</code>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="name" label="角色名" width="130">
+                  <template #default="{ row }">
+                    <el-input v-model="row.name" size="small" @input="debounceSyncChars" />
+                  </template>
+                </el-table-column>
+                <el-table-column prop="description" label="描述">
+                  <template #default="{ row }">
+                    <el-input v-model="row.description" size="small" placeholder="年龄 / 外貌 / 性格"
+                      @input="debounceSyncChars" />
+                  </template>
+                </el-table-column>
+                <el-table-column prop="role" label="定位" width="100">
+                  <template #default="{ row }">
+                    <el-select v-model="row.role" size="small" @change="syncChars">
+                      <el-option label="主角" value="protagonist" />
+                      <el-option label="反派" value="antagonist" />
+                      <el-option label="配角" value="supporting" />
+                      <el-option label="龙套" value="minor" />
+                    </el-select>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="arc" label="弧光" width="110">
+                  <template #default="{ row }">
+                    <el-input v-model="row.arc" size="small" placeholder="成长线" @input="debounceSyncChars" />
+                  </template>
+                </el-table-column>
+              </el-table>
             </div>
           </div>
 
           <!-- YAML 编辑区 -->
-          <el-input v-model="yamlText" type="textarea" :rows="18" class="yaml-area"
+          <el-input v-model="yamlText" type="textarea" :rows="yamlRows" class="yaml-area"
             placeholder="点击「AI 转换」或「本地转换」生成剧本……&#10;&#10;也可以直接在此编辑 YAML" @input="onYamlEdit" />
 
           <!-- 状态提示 -->
@@ -148,6 +225,9 @@
                 <SuccessFilled />
               </el-icon>
               转换完成（章节 {{ store.chapterCount }} → 幕 {{ store.screenplay?.screenplay?.acts?.length || '?' }}）
+              <span v-if="store.incrementalMode && store.canContinueConvert" class="incremental-hint">
+                · 还有 {{ store.pendingChapters.length }} 章待转换
+              </span>
             </div>
             <div v-else class="status idle">
               填写 API Key 后点击 AI 转换，或使用本地规则引擎
@@ -175,17 +255,41 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Loading, WarningFilled, SuccessFilled, ArrowDown } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Loading, WarningFilled, SuccessFilled, ArrowDown, Tools } from '@element-plus/icons-vue'
 import { useNovelStore } from '@/stores/novel'
-import { convertWithAI } from '@/api/converter.js'
 
 const router = useRouter()
 const store = useNovelStore()
 
 // YAML 编辑
 const yamlText = ref('')
+const charTableExpanded = ref(true)
+const localChars = ref([])
+
 watch(() => store.yamlOutput, (v) => { if (v) yamlText.value = v })
+
+watch(() => store.characters, (chars) => {
+  if (chars && chars.length) {
+    localChars.value = JSON.parse(JSON.stringify(chars))
+  }
+}, { immediate: true, deep: true })
+
+const yamlRows = computed(() => {
+  if (store.hasResult && store.characters.length > 0 && charTableExpanded.value) {
+    return 14
+  }
+  return 18
+})
+
+// 转换按钮文字
+const convertButtonText = computed(() => {
+  if (store.isConverting) return '转换中...'
+  if (store.incrementalMode && store.canContinueConvert) {
+    return `增量转换 (${store.pendingChapters.length}章)`
+  }
+  return 'AI 转换'
+})
 
 // 章节展开状态
 const expanded = ref({})
@@ -197,7 +301,6 @@ const inputTitle = computed(() =>
 
 function onRawInput() {
   store.setNovelText(store.novelText)
-  // 有章节后自动提示可切换管理模式
 }
 
 function toggleChapter(i) {
@@ -215,7 +318,6 @@ function doAutoSplit() {
     ElMessage.warning(store.error)
   } else {
     ElMessage.success('已按段落均分为 3 章')
-    // 展开所有章节
     store.chapterTexts.forEach((_, i) => { expanded.value[i] = true })
   }
 }
@@ -227,56 +329,55 @@ watch(() => store.chapterTexts.length, (len) => {
   }
 }, { immediate: true })
 
-/* ===== 转换 ===== */
-async function startAIConvert() {
-  if (store.chapterCount < 3) {
+/* ===== 转换命令处理 ===== */
+async function handleConvertCommand(command) {
+  // 检查章节数量
+  if (store.chapterCount < 3 && command !== 'local') {
     store.error = `当前仅检测到 ${store.chapterCount} 章，至少需要 3 章`
     ElMessage.warning(store.error)
     return
   }
-  if (!store.apiKey) {
-    store.error = '请填写 OpenAI API Key'
-    ElMessage.warning(store.error)
+
+  // 检查 API Key（本地转换不需要）
+  if (command !== 'local' && !store.apiKey) {
+    ElMessage.warning('请先配置 API Key')
     return
   }
 
-  store.isConverting = true
-  store.error = null
+  let success = false
 
-  const result = await convertWithAI(store.novelText, {
-    apiKey: store.apiKey,
-    model: store.model,
-    metadata: {
-      title: store.metadata.title,
-      author: store.metadata.author,
-      source: store.metadata.source,
-    },
-  })
-
-  store.isConverting = false
-  if (result.success) {
-    store.yamlOutput = result.yaml
-    yamlText.value = result.yaml
-    store._save()
-    ElMessage.success('AI 转换完成！')
-  } else {
-    store.error = result.error
-    ElMessage.error(result.error)
+  switch (command) {
+    case 'smart':
+      success = await store.runAIConversionSmart()
+      if (success) {
+        ElMessage.success('智能转换完成！')
+      }
+      break
+    case 'full':
+      success = await store.runAIConversion()
+      if (success) {
+        ElMessage.success('全量转换完成！')
+      }
+      break
+    case 'incremental':
+      if (!store.canContinueConvert) {
+        ElMessage.warning('没有待转换的章节')
+        return
+      }
+      success = await store.runAIIncrementalConversion()
+      if (success) {
+        ElMessage.success('增量转换完成！')
+      }
+      break
+    case 'local':
+      success = await store.runLocalConversion()
+      if (success) {
+        ElMessage.success('本地转换完成！')
+      }
+      break
   }
-}
 
-async function runLocalConvert() {
-  store.error = null
-  if (store.chapterCount < 3) {
-    store.error = `当前 ${store.chapterCount} 章，至少需要 3 章`
-    ElMessage.warning(store.error)
-    return
-  }
-  const ok = await store.runConversion()
-  if (ok) {
-    yamlText.value = store.yamlOutput
-    ElMessage.success('本地转换完成！')
-  } else {
+  if (!success && store.error) {
     ElMessage.error(store.error)
   }
 }
@@ -288,15 +389,41 @@ function downloadYaml() {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `剧本.yaml`
+  a.download = `剧本_${store.metadata.title || 'untitled'}.yaml`
   a.click()
   URL.revokeObjectURL(url)
+  ElMessage.success('下载成功')
 }
 
 function onYamlEdit(val) {
   // 手动编辑时同步回 store 便于下载
   store.yamlOutput = val
 }
+
+let syncTimer = null
+function debounceSyncChars() {
+  clearTimeout(syncTimer)
+  syncTimer = setTimeout(syncChars, 300)
+}
+
+function syncChars() {
+  if (!store.screenplay?.screenplay) return
+  store.screenplay.screenplay.characters = JSON.parse(JSON.stringify(localChars.value))
+  store.yamlOutput = buildYamlOutput(store.screenplay)
+  yamlText.value = store.yamlOutput
+  store._save()
+}
+
+// 导入 buildYamlOutput
+import { buildYamlOutput } from '@/utils/converter.js'
+
+// 页面离开时保存
+onMounted(() => {
+  // 如果有保存的进度，恢复到 yamlText
+  if (store.yamlOutput) {
+    yamlText.value = store.yamlOutput
+  }
+})
 </script>
 
 <style scoped>
@@ -504,6 +631,18 @@ function onYamlEdit(val) {
   flex-wrap: wrap;
 }
 
+.progress-bar {
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.progress-text {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+  text-align: center;
+}
+
 .yaml-area {
   flex: 1;
   min-height: 0;
@@ -549,6 +688,75 @@ function onYamlEdit(val) {
 .status.success {
   color: var(--el-color-success);
   background: #f0fdf4;
+  flex-wrap: wrap;
+}
+
+.incremental-hint {
+  margin-left: 12px;
+  font-size: 12px;
+  color: var(--el-color-info);
+}
+
+/* ===== 全局角色表 ===== */
+.char-table-section {
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  background: #fafbfc;
+}
+
+.char-table-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.char-table-header:hover {
+  background: #f0f1f3;
+  border-radius: 6px;
+}
+
+.char-table-title {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+}
+
+.char-table-subtitle {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  flex: 1;
+}
+
+.char-table-body {
+  padding: 0 10px 8px;
+}
+
+.char-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #7c3aed;
+  background: #f3f0ff;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ===== 配置行 ===== */
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.config-hint {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
 }
 
 /* ===== 底部栏 ===== */

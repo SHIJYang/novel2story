@@ -8,7 +8,7 @@
         <h1>📖 剧本 YAML Schema 文档</h1>
         <p class="doc-meta">Novel2Story 结构化剧本数据格式定义 v1.0.0</p>
         <p class="doc-sub">
-          用于从小说章节（≥3章）自动转换为结构化剧本初稿，支持人工编辑与二次打磨。
+          用于从小说章节(≥3章)自动转换为结构化剧本初稿,支持人工编辑与二次打磨。
         </p>
       </div>
 
@@ -39,12 +39,12 @@
             createdAt string(date) # 生成日期
             version string # Schema 版本
             characters []Character # 角色表
-            acts []Act # 幕列表（基于章节拆分）</code></pre>
+            acts []Act # 幕列表(基于章节拆分)</code></pre>
       </el-card>
 
       <!-- 元数据 -->
       <div class="section-title">
-        <span>📋 元数据（Metadata）</span>
+        <span>📋 元数据(Metadata)</span>
       </div>
       <el-card shadow="never" class="section">
         <el-table :data="metaFields" border stripe size="small">
@@ -55,7 +55,7 @@
           <el-table-column prop="required" label="必需" width="60" align="center">
             <template #default="{ row }">
               <el-tag v-if="row.required" size="small" type="danger">✅</el-tag>
-              <span v-else>—</span>
+              <span v-else>-</span>
             </template>
           </el-table-column>
           <el-table-column prop="desc" label="说明" />
@@ -64,7 +64,7 @@
 
       <!-- 角色 -->
       <div class="section-title">
-        <span>👥 角色（Character）</span>
+        <span>👥 角色(Character)</span>
       </div>
       <el-card shadow="never" class="section">
         <el-table :data="charFields" border stripe size="small">
@@ -75,7 +75,7 @@
           <el-table-column prop="required" label="必需" width="60" align="center">
             <template #default="{ row }">
               <el-tag v-if="row.required" size="small" type="danger">✅</el-tag>
-              <span v-else>—</span>
+              <span v-else>-</span>
             </template>
           </el-table-column>
           <el-table-column prop="desc" label="说明" />
@@ -84,7 +84,7 @@
 
       <!-- 幕 -->
       <div class="section-title">
-        <span>🎭 幕（Act）</span>
+        <span>🎭 幕(Act)</span>
       </div>
       <el-card shadow="never" class="section">
         <el-table :data="actFields" border stripe size="small">
@@ -95,7 +95,7 @@
           <el-table-column prop="required" label="必需" width="60" align="center">
             <template #default="{ row }">
               <el-tag v-if="row.required" size="small" type="danger">✅</el-tag>
-              <span v-else>—</span>
+              <span v-else>-</span>
             </template>
           </el-table-column>
           <el-table-column prop="desc" label="说明" />
@@ -104,7 +104,7 @@
 
       <!-- 场景 -->
       <div class="section-title">
-        <span>🎬 场景（Scene）</span>
+        <span>🎬 场景(Scene)</span>
       </div>
       <el-card shadow="never" class="section">
         <el-table :data="sceneFields" border stripe size="small">
@@ -115,7 +115,7 @@
           <el-table-column prop="required" label="必需" width="60" align="center">
             <template #default="{ row }">
               <el-tag v-if="row.required" size="small" type="danger">✅</el-tag>
-              <span v-else>—</span>
+              <span v-else>-</span>
             </template>
           </el-table-column>
           <el-table-column prop="desc" label="说明" />
@@ -124,11 +124,11 @@
 
       <!-- 场景元素 -->
       <div class="section-title">
-        <span>🎬 场景元素（Element）</span>
+        <span>🎬 场景元素(Element)</span>
       </div>
       <el-card shadow="never" class="section">
         <p class="field-note">
-          三种核心类型：
+          三种核心类型:
           <el-tag size="small">action</el-tag> 动作描写
           <el-tag size="small">dialogue</el-tag> 对白
           <el-tag size="small">transition</el-tag> 转场
@@ -142,7 +142,7 @@
             <template #default="{ row }">
               <el-tag v-if="row.required === true" size="small" type="danger">✅</el-tag>
               <el-tag v-else-if="row.required === 'dialogue'" size="small" type="warning">dialogue</el-tag>
-              <span v-else>—</span>
+              <span v-else>-</span>
             </template>
           </el-table-column>
           <el-table-column prop="desc" label="说明" />
@@ -151,7 +151,7 @@
 
       <!-- 完整示例 -->
       <div class="section-title">
-        <span>📄 完整示例（基于 ≥3 章小说自动转换）</span>
+        <span>📄 完整示例(基于 ≥3 章小说自动转换)</span>
       </div>
       <el-card shadow="never" class="section">
         <el-collapse>
@@ -179,11 +179,11 @@
       </div>
       <el-card shadow="never" class="section">
         <ul class="tool-note">
-          <li>✅ 工具会将 <strong>≥3 个章节</strong> 的小说文本，按本 Schema 自动拆分为 <strong>幕 → 场景 → 元素</strong>。</li>
-          <li>✅ 自动识别 <strong>角色、地点、时间</strong>，并建立角色引用（<code>id</code>）。</li>
-          <li>✅ 将小说中的心理描写、背景说明转化为 <strong>action / dialogue</strong>，符合“展示，不要告诉”原则。</li>
+          <li>✅ 工具会将 <strong>≥3 个章节</strong> 的小说文本,按本 Schema 自动拆分为 <strong>幕 → 场景 → 元素</strong>。</li>
+          <li>✅ 自动识别 <strong>角色、地点、时间</strong>,并建立角色引用(<code>id</code>)。</li>
+          <li>✅ 将小说中的心理描写、背景说明转化为 <strong>action / dialogue</strong>,符合"展示,不要告诉"原则。</li>
           <li>✏️ 作者可在生成的 YAML 上直接修改或使用可视化编辑器进一步打磨。</li>
-          <li>🔁 支持后续 <strong>重新导入、合并修改</strong>，实现“AI 初稿 + 人工精修”的工作流。</li>
+          <li>🔁 支持后续 <strong>重新导入、合并修改</strong>,实现"AI 初稿 + 人工精修"的工作流。</li>
         </ul>
       </el-card>
     </div>
@@ -192,39 +192,39 @@
 
 <script setup>
 const principles = [
-  { icon: '🎯', title: '语义保真', desc: '保留原著叙事结构（章节→幕），同时映射到标准剧本元素（场景、对白、动作）。' },
-  { icon: '✏️', title: '人类可编辑', desc: 'YAML 比 JSON/XML 更适合编剧手工编辑，不需要专业软件也能修改。' },
-  { icon: '🔌', title: '工具链友好', desc: '可双向转换为 Fountain、FDX、PDF 等标准剧本格式，每个字段有明确语义。' },
-  { icon: '🔧', title: '渐进增强', desc: '所有中间状态都是合法 Schema——从"只有文本"到"完整剧本"平滑过渡。' },
+  { icon: '🎯', title: '语义保真', desc: '保留原著叙事结构(章节→幕),同时映射到标准剧本元素(场景、对白、动作)。' },
+  { icon: '✏️', title: '人类可编辑', desc: 'YAML 比 JSON/XML 更适合编剧手工编辑,不需要专业软件也能修改。' },
+  { icon: '🔌', title: '工具链友好', desc: '可双向转换为 Fountain、FDX、PDF 等标准剧本格式,每个字段有明确语义。' },
+  { icon: '🔧', title: '渐进增强', desc: '所有中间状态都是合法 Schema--从"只有文本"到"完整剧本"平滑过渡。' },
 ]
 
 const metaFields = [
   { field: 'title', type: 'string', required: true, desc: '剧本标题' },
   { field: 'author', type: 'string', required: false, desc: '作者' },
   { field: 'source', type: 'string', required: false, desc: '来源小说' },
-  { field: 'sourceChapters', type: 'integer', required: true, desc: '章节数（≥3），用于估算转换工作量' },
+  { field: 'sourceChapters', type: 'integer', required: true, desc: '章节数(≥3),用于估算转换工作量' },
   { field: 'createdAt', type: 'date', required: true, desc: '生成日期 YYYY-MM-DD' },
-  { field: 'version', type: 'string', required: true, desc: 'Schema 版本号（SemVer），用于向后兼容' },
+  { field: 'version', type: 'string', required: true, desc: 'Schema 版本号(SemVer),用于向后兼容' },
 ]
 
 const charFields = [
-  { field: 'id', type: 'string', required: true, desc: '唯一标识 char_001，被场景/对话引用' },
+  { field: 'id', type: 'string', required: true, desc: '唯一标识 char_001,被场景/对话引用' },
   { field: 'name', type: 'string', required: true, desc: '角色显示名' },
-  { field: 'alias', type: 'string[]', required: false, desc: '别名/昵称，用于匹配小说中不同称呼' },
-  { field: 'description', type: 'string', required: false, desc: '角色描述：年龄、外貌、性格' },
+  { field: 'alias', type: 'string[]', required: false, desc: '别名/昵称,用于匹配小说中不同称呼' },
+  { field: 'description', type: 'string', required: false, desc: '角色描述:年龄、外貌、性格' },
   { field: 'role', type: 'enum', required: false, desc: 'protagonist / antagonist / supporting / minor' },
   { field: 'arc', type: 'string', required: false, desc: '角色弧光/成长线' },
 ]
 
 const actFields = [
   { field: 'id', type: 'string', required: true, desc: '唯一标识 act_001' },
-  { field: 'title', type: 'string', required: true, desc: '幕标题，默认映射为小说章节名' },
-  { field: 'summary', type: 'string', required: false, desc: '剧情摘要，AI 自动生成' },
-  { field: 'scenes', type: 'Scene[]', required: true, desc: '场景列表，至少 1 个场景' },
+  { field: 'title', type: 'string', required: true, desc: '幕标题,默认映射为小说章节名' },
+  { field: 'summary', type: 'string', required: false, desc: '剧情摘要,AI 自动生成' },
+  { field: 'scenes', type: 'Scene[]', required: true, desc: '场景列表,至少 1 个场景' },
 ]
 
 const sceneFields = [
-  { field: 'id', type: 'string', required: true, desc: 'scn_001_001（幕索引_场景索引）' },
+  { field: 'id', type: 'string', required: true, desc: 'scn_001_001(幕索引_场景索引)' },
   { field: 'heading', type: 'string', required: true, desc: 'INT./EXT. 地点 - 时间' },
   { field: 'location', type: 'string', required: false, desc: '从文本提取的地点' },
   { field: 'time', type: 'string', required: false, desc: '从文本提取的时间段' },
@@ -236,16 +236,18 @@ const sceneFields = [
 const elementFields = [
   { field: 'type', type: 'enum', required: true, desc: 'action / dialogue / transition' },
   { field: 'content', type: 'string', required: true, desc: '元素内容文本' },
-  { field: 'character', type: 'string', required: 'dialogue', desc: '说话角色 ID，引用 characters[].id' },
-  { field: 'parenthetical', type: 'string', required: false, desc: '语气/动作指示，如"低声""叹气"' },
+  { field: 'character', type: 'string', required: 'dialogue', desc: '说话角色 ID,引用 characters[].id' },
+  { field: 'parenthetical', type: 'string', required: false, desc: '语气/动作指示,如"低声""叹气"' },
 ]
 
 const faqs = [
   { q: '为什么用 id 引用角色而不是直接用名字？', a: '一个角色可能有多个称呼（本名、外号、场合称呼）。用 id 引用可以在不修改所有对白引用的前提下修改角色名。AI 生成时，名字同音不同字的情形也更易处理。' },
   { q: '为什么场景元素用数组而不是嵌套结构？', a: '剧本本质上是顺序文本——动作和对白交替出现，构成线性叙事流。数组忠实于这个本质，也更容易在编辑器中进行拖拽排序。' },
   { q: '为什么不直接用 Fountain 或 FDX 格式？', a: 'Fountain 是纯文本标注，无法直接提取结构化信息。FDX (XML) 人类不可读。YAML 介于两者之间：保留机器可分析性，同时人类可以用文本编辑器直接改。' },
-  { q: '小说心理描写会丢失吗？', a: '不是丢失，是转译。剧本只记录看得见听得见的东西。心理描写、背景叙事等通过动作和对白来表现。例如“他感到很紧张” → action：“他握紧拳头，来回踱步”。' },
+  { q: '小说心理描写会丢失吗？', a: '不是丢失，是转译。剧本只记录看得见听得见的东西。心理描写、背景叙事等通过动作和对白来表现。例如"他感到很紧张" → action："他握紧拳头，来回踱步"。' },
   { q: '如何处理内心独白？', a: '可外化的心理活动 → 转化为 action。内心独白 → 标为 (V.O.) 画外音对话，在 parenthetical 中标注。后续版本可能增加 monologue 类型。' },
+  { q: '支持哪些 AI 服务商？', a: '支持所有兼容 OpenAI API 格式的服务商：OpenAI（GPT-3.5/4/4o）、DeepSeek（deepseek-chat/reasoner）、Ollama 本地模型（无需 Key）、Moonshot 月之暗面、Groq（Llama3/Mixtral 超高速推理）、以及任意自定义端点。在工具栏点击 ⚙️ 图标配置。' },
+  { q: '增量模式和全量模式有什么区别？', a: '全量模式：一次性将全部章节传给 AI 生成完整剧本。增量模式：逐章转换，已转换章节自动摘要压缩至约 2000 字符，避免超出 token 限制。适合 10 章以上的长篇小说。在 ⚙️ 弹窗中切换。' },
 ]
 
 const fullExample = `screenplay:
@@ -260,20 +262,20 @@ const fullExample = `screenplay:
     - id: "char_001"
       name: "李明"
       alias: []
-      description: "28岁，程序员"
+      description: "28岁,程序员"
       role: protagonist
       arc: "从被动接受到主动抗争"
     - id: "char_002"
       name: "林晓"
       alias: []
-      description: "约30岁，警官"
+      description: "约30岁,警官"
       role: antagonist
       arc: ""
 
   acts:
     - id: "act_001"
       title: "第一章 意外的访客"
-      summary: "李明接到警察电话，得知父亲二十年前的失踪线索。"
+      summary: "李明接到警察电话,得知父亲二十年前的失踪线索。"
       scenes:
         - id: "scn_001_001"
           heading: "INT. 客厅 - 清晨"
@@ -283,21 +285,21 @@ const fullExample = `screenplay:
           characters: ["char_001", "char_002"]
           elements:
             - type: action
-              content: "阳光透过窗帘洒进客厅。李明坐在电脑前，已经连续工作了十二个小时。"
+              content: "阳光透过窗帘洒进客厅。李明坐在电脑前,已经连续工作了十二个小时。"
             - type: dialogue
               character: "char_001"
               parenthetical: "叹气"
-              content: "这个bug我改了一整天……"
+              content: "这个bug我改了一整天......"
             - type: action
-              content: "手机突然震动。他看了一眼来电显示：陌生号码。"
+              content: "手机突然震动。他看了一眼来电显示:陌生号码。"
             - type: dialogue
               character: "char_002"
               parenthetical: "冷静"
-              content: "李警官？"
+              content: "李警官?"
             - type: dialogue
               character: "char_001"
               parenthetical: "疑惑"
-              content: "您找谁？"
+              content: "您找谁?"
 `
 </script>
 
