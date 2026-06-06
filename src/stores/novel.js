@@ -3,13 +3,12 @@
  */
 import { defineStore } from 'pinia'
 import { parseNovel, splitIntoChapterTexts } from '@/utils/novelParser.js'
-import { convertNovelToScreenplay, buildYamlOutput } from '@/utils/converter.js'
-import { convertWithAI, buildContextSummary } from '@/api/converter.js'
+import { convertNovelToScreenplay, buildYamlOutput, extractChapterScreenplay, buildChapterYamlOutput, mergeChapterResults, buildCharactersYaml, buildContextSummary } from '@/utils/converter.js'
+import { convertChapterWithAI } from '@/api/converter.js'
 import yaml from 'js-yaml'
 
 const STATE_KEY = 'novel2story_state'
 const API_KEY_STORAGE = 'sk-6zRjJlpnuNlHGLiCkNJqEfUBzMtuzqXqYqDrF0qG8eJOEXkO'
-const CONFIG_KEY = 'novel2story_apiconfig'
 
 /* ===== 统一持久化 ===== */
 const storage = {
@@ -37,7 +36,6 @@ const storage = {
 export const useNovelStore = defineStore('novel', {
   state: () => {
     const saved = storage.get(STATE_KEY)
-    const savedCfg = storage.get(CONFIG_KEY)
     return {
       novelText: saved?.novelText || '',
       metadata: saved?.metadata || { title: '', author: '', source: '' },
@@ -46,9 +44,14 @@ export const useNovelStore = defineStore('novel', {
       chapterCount: saved?.chapterTexts?.length || 0,
 
       chapters: [],
+
+      /* 全局剧本 */
       screenplay: saved?.screenplay || null,
-      yamlOutput: saved?.yamlOutput || '',
-      contextSummary: saved?.contextSummary || '',
+      globalYaml: saved?.globalYaml || '',
+
+      /* 每章独立剧本 */
+      chapterScreenplays: saved?.chapterScreenplays || [],
+      chapterYamls: saved?.chapterYamls || [],
 
       isConverting: false,
       error: null,
@@ -59,29 +62,25 @@ export const useNovelStore = defineStore('novel', {
       model: 'agnes-2.0-flash',
       rememberKey: !!storage.getRaw(API_KEY_STORAGE),
 
-      incrementalMode: savedCfg?.incrementalMode ?? true,
-
       inputMode: 'input',
       convertProgress: 0,
       currentConvertingChapter: '',
+
+      /* 当前分章预览索引 */
+      activeChapterIndex: 0,
     }
   },
 
   getters: {
-    hasResult: (s) => !!s.yamlOutput,
+    hasResult: (s) => !!s.globalYaml,
     characters: (s) => s.screenplay?.screenplay?.characters ?? [],
     chaptersEnough: (s) => s.chapterCount >= 3,
 
     convertedActCount: (s) => s.screenplay?.screenplay?.acts?.length || 0,
-    pendingChapters: (s) => {
-      const converted = s.screenplay?.screenplay?.acts?.length || 0
-      return s.chapterTexts.slice(converted)
-    },
-    canContinueConvert: (s) => {
-      if (!s.incrementalMode) return false
-      const converted = s.screenplay?.screenplay?.acts?.length || 0
-      return converted > 0 && converted < s.chapterTexts.length
-    },
+
+    /* 当前正在预览的分章剧本 */
+    currentChapterSc: (s) => s.chapterScreenplays[s.activeChapterIndex] || null,
+    currentChapterYaml: (s) => s.chapterYamls[s.activeChapterIndex] || '',
   },
 
   actions: {
@@ -199,10 +198,6 @@ export const useNovelStore = defineStore('novel', {
       this.rememberKey = val
       if (val) { storage.setRaw(API_KEY_STORAGE, this.apiKey) } else { storage.remove(API_KEY_STORAGE) }
     },
-    setIncrementalMode(val) {
-      this.incrementalMode = val
-      storage.set(CONFIG_KEY, { incrementalMode: val })
-    },
     setModel(model) { this.model = model },
     setEndpoint(ep) { this.endpoint = ep },
 
@@ -221,85 +216,97 @@ export const useNovelStore = defineStore('novel', {
       }
     },
 
-    /* ===== 生成摘要 ===== */
-    _updateContextSummary() {
-      if (this.screenplay && this.incrementalMode) {
-        this.contextSummary = buildContextSummary(this.screenplay)
+    /* ===== 从全局剧本提取分章剧本 ===== */
+    _buildChapterScreenplays() {
+      if (!this.screenplay?.screenplay?.acts?.length) {
+        this.chapterScreenplays = []
+        this.chapterYamls = []
+        return
       }
+      const acts = this.screenplay.screenplay.acts
+      const scs = []
+      const yamls = []
+      for (let i = 0; i < acts.length; i++) {
+        const chSc = extractChapterScreenplay(this.screenplay, i)
+        if (chSc) {
+          scs.push(chSc)
+          yamls.push(buildChapterYamlOutput(chSc, i))
+        }
+      }
+      this.chapterScreenplays = scs
+      this.chapterYamls = yamls
     },
 
-    /* ===== 统一的 AI 转换 ===== */
-    async _runAIConversionInternal(chapters, mode = 'full') {
+    /* ===== AI 转换（逐章请求 + 上下文传递，保证详尽） ===== */
+    async runAIConversion() {
       this.error = null
       this.convertProgress = 0
       this.currentConvertingChapter = ''
 
       if (!this.novelText.trim()) { this.error = '请先输入小说文本'; return false }
       if (!this.apiKey) { this.error = '请先配置 API Key'; return false }
-      if (chapters.length === 0) { this.error = '没有可转换的章节'; return false }
-      if (mode === 'incremental' && !this.screenplay) { this.error = '没有已有剧本，请先进行首次转换'; return false }
+      if (this.chapterTexts.length === 0) { this.error = '没有可转换的章节'; return false }
 
       this.isConverting = true
+
+      // 临时存储逐章结果
+      const chapterResults = []
 
       try {
         const meta = { title: this.metadata.title || '', author: this.metadata.author || '', source: this.metadata.source || '' }
 
-        this.currentConvertingChapter = mode === 'full'
-          ? `全量转换 (${chapters.length} 章)`
-          : `增量转换 (${chapters.length} 章)`
-        this.convertProgress = 10
+        for (let i = 0; i < this.chapterTexts.length; i++) {
+          const ch = this.chapterTexts[i]
+          this.currentConvertingChapter = `第${i + 1}章: ${ch.title || `第${i + 1}章`}`
+          this.convertProgress = Math.round(((i) / this.chapterTexts.length) * 80)
 
-        const result = await convertWithAI(chapters, {
-          apiKey: this.apiKey,
-          model: this.model,
-          endpoint: this.endpoint,
-          metadata: meta,
-          contextSummary: mode === 'incremental' ? this.contextSummary : '',
-          temperature: 0.3,
-          maxTokens: 8192,
-          timeout: 120000,
-        })
-
-        this.convertProgress = 90
-
-        if (!result.success) {
-          this.error = result.error
-          return false
-        }
-
-        if (mode === 'full') {
-          // 全量：直接赋值
-          this.yamlOutput = result.yaml
-          this.screenplay = this._parseYamlToScreenplay(result.yaml)
-        } else {
-          // 增量：合并到已有剧本
-          const newScreenplay = this._parseYamlToScreenplay(result.yaml)
-          if (newScreenplay?.screenplay?.acts?.length) {
-            const existingActs = this.screenplay.screenplay?.acts || []
-            const existingChars = this.screenplay.screenplay?.characters || []
-            const newChars = newScreenplay.screenplay?.characters || []
-
-            const charMap = new Map(existingChars.map(c => [c.id, c]))
-            newChars.forEach(c => { if (!charMap.has(c.id)) charMap.set(c.id, c) })
-
-            this.screenplay = {
-              screenplay: {
-                ...this.screenplay.screenplay,
-                title: this.screenplay.screenplay?.title || meta.title,
-                characters: Array.from(charMap.values()),
-                acts: [...existingActs, ...newScreenplay.screenplay.acts],
-              },
-            }
-            this.yamlOutput = buildYamlOutput(this.screenplay)
-          } else {
-            // 增量结果解析失败，回退新输出
-            this.yamlOutput = result.yaml
-            this.screenplay = newScreenplay
+          // 构造前文摘要
+          let contextSummary = ''
+          let charactersYaml = ''
+          if (chapterResults.length > 0) {
+            // 用已处理章节合并后的临时全局剧本生成摘要
+            const tempMerged = mergeChapterResults(chapterResults, meta)
+            contextSummary = buildContextSummary(tempMerged)
+            charactersYaml = buildCharactersYaml(tempMerged)
           }
+
+          const result = await convertChapterWithAI(ch, {
+            apiKey: this.apiKey,
+            model: this.model,
+            endpoint: this.endpoint,
+            metadata: meta,
+            contextSummary,
+            charactersYaml,
+            chapterIndex: i + 1,
+            temperature: 0.3,
+            maxTokens: 32768,
+            timeout: 180000,
+          })
+
+          if (!result.success) {
+            this.error = `第${i + 1}章转换失败: ${result.error}`
+            return false
+          }
+
+          chapterResults.push({
+            yaml: result.yaml,
+            parsed: this._parseYamlToScreenplay(result.yaml),
+          })
         }
 
-        this._updateContextSummary()
+        // ---- 所有章节转换完毕，合并为全局剧本 ----
+        this.convertProgress = 95
+        this.currentConvertingChapter = '合并全局剧本...'
+
+        const merged = mergeChapterResults(chapterResults, meta)
+        this.screenplay = merged
+        this.globalYaml = buildYamlOutput(merged)
+
+        // ---- 从合并后的全局剧本生成各章独立剧本 ----
+        this._buildChapterScreenplays()
+
         this.convertProgress = 100
+        this.currentConvertingChapter = ''
         this._save()
         return true
       } catch (err) {
@@ -310,22 +317,6 @@ export const useNovelStore = defineStore('novel', {
         this.convertProgress = 0
         this.currentConvertingChapter = ''
       }
-    },
-
-    /* ===== 对外公开的转换入口 ===== */
-    async runAIConversion() {
-      return this._runAIConversionInternal(this.chapterTexts, 'full')
-    },
-
-    async runAIIncrementalConversion() {
-      return this._runAIConversionInternal(this.pendingChapters, 'incremental')
-    },
-
-    async runAIConversionSmart() {
-      if (this.incrementalMode && this.screenplay && this.pendingChapters.length > 0) {
-        return this.runAIIncrementalConversion()
-      }
-      return this.runAIConversion()
     },
 
     /* ===== 本地转换（不调用 API） ===== */
@@ -342,8 +333,11 @@ export const useNovelStore = defineStore('novel', {
 
         const meta = { title: this.metadata.title || '', author: this.metadata.author || '', source: this.metadata.source || '' }
         this.screenplay = convertNovelToScreenplay(chapters, meta)
-        this.yamlOutput = buildYamlOutput(this.screenplay)
-        this.contextSummary = ''
+        this.globalYaml = buildYamlOutput(this.screenplay)
+
+        // 提取每章独立剧本
+        this._buildChapterScreenplays()
+
         this._save()
         return true
       } catch (err) {
@@ -362,12 +356,14 @@ export const useNovelStore = defineStore('novel', {
       this.chapterCount = 0
       this.chapters = []
       this.screenplay = null
-      this.yamlOutput = ''
-      this.contextSummary = ''
+      this.globalYaml = ''
+      this.chapterScreenplays = []
+      this.chapterYamls = []
       this.error = null
       this.inputMode = 'input'
       this.convertProgress = 0
       this.currentConvertingChapter = ''
+      this.activeChapterIndex = 0
       storage.remove(STATE_KEY)
     },
 
@@ -377,9 +373,10 @@ export const useNovelStore = defineStore('novel', {
         novelText: this.novelText,
         chapterTexts: this.chapterTexts,
         metadata: this.metadata,
-        yamlOutput: this.yamlOutput,
+        globalYaml: this.globalYaml,
         screenplay: this.screenplay,
-        contextSummary: this.contextSummary,
+        chapterScreenplays: this.chapterScreenplays,
+        chapterYamls: this.chapterYamls,
       })
     },
   },

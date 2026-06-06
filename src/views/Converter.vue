@@ -100,33 +100,33 @@
           <!-- 工具栏 -->
           <div class="output-toolbar">
             <div class="toolbar-left">
-              <el-dropdown @command="handleConvertCommand" :disabled="store.isConverting">
-                <el-button type="primary" :loading="store.isConverting" :disabled="store.chapterCount < 3">
-                  {{ convertButtonText }}
-                  <el-icon class="el-icon--right">
-                    <ArrowDown />
-                  </el-icon>
-                </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="smart">
-                      🤖 智能转换（推荐）
-                      <span style="font-size:12px;color:#999;">自动选择全量/增量</span>
-                    </el-dropdown-item>
-                    <el-dropdown-item command="full">📦 全量转换（全部章节）</el-dropdown-item>
-                    <el-dropdown-item command="incremental" :disabled="!store.canContinueConvert">
-                      🔄 增量转换（仅新章节）
-                    </el-dropdown-item>
-                    <el-dropdown-item divided command="local">
-                      ⚙️ 本地转换（规则引擎）
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-
-              <el-button size="default" :disabled="!store.yamlOutput" @click="downloadYaml">
-                ⬇️ 下载 YAML
+              <el-button type="primary" :loading="store.isConverting" :disabled="store.chapterCount < 3"
+                @click="handleConvert">
+                🤖 AI 转换
               </el-button>
+              <el-button :disabled="store.chapterCount < 3" @click="handleConvertLocal">
+                ⚙️ 本地转换
+              </el-button>
+
+              <template v-if="store.hasResult">
+                <!-- 全局/分章 视图切换 -->
+                <el-radio-group v-model="viewMode" size="small">
+                  <el-radio-button value="global">📋 全局剧本</el-radio-button>
+                  <el-radio-button value="chapter">📄 章节剧本</el-radio-button>
+                </el-radio-group>
+
+                <!-- 下载按钮 -->
+                <template v-if="viewMode === 'global'">
+                  <el-button size="small" :disabled="!store.globalYaml" @click="downloadGlobalYaml">
+                    ⬇️ 全局
+                  </el-button>
+                </template>
+                <template v-else>
+                  <el-button size="small" :disabled="!store.currentChapterYaml" @click="downloadChapterYaml">
+                    ⬇️ 本章
+                  </el-button>
+                </template>
+              </template>
             </div>
             <div class="toolbar-right">
               <el-input v-model="store.apiKey" type="password" size="small" placeholder="API Key" show-password
@@ -134,13 +134,6 @@
               <el-checkbox :model-value="store.rememberKey" size="small" @change="(v) => store.setRememberKey(v)">
                 记住
               </el-checkbox>
-
-              <div class="config-row">
-                <span class="config-hint">
-                  {{ store.incrementalMode ? '分章依次转换，已转章节总结为摘要' : '整本一次性转换' }}
-                </span>
-                <el-switch :model-value="store.incrementalMode" size="small" @change="store.setIncrementalMode" />
-              </div>
             </div>
           </div>
 
@@ -148,6 +141,18 @@
           <div v-if="store.isConverting && store.convertProgress > 0" class="progress-bar">
             <el-progress :percentage="store.convertProgress" :stroke-width="6" :show-text="false" />
             <div class="progress-text">{{ store.currentConvertingChapter }}</div>
+          </div>
+
+          <!-- 分章剧本页签导航 -->
+          <div v-if="store.hasResult && viewMode === 'chapter' && (store.chapterYamls?.length ?? 0) > 0" class="chapter-tabs">
+            <el-tabs v-model="store.activeChapterIndex" type="card" @tab-click="loadYamlForView">
+              <el-tab-pane
+                v-for="(ch, i) in store.chapterTexts"
+                :key="i"
+                :label="ch.title || `第${i + 1}章`"
+                :name="i"
+              />
+            </el-tabs>
           </div>
 
           <!-- 全局角色表 -->
@@ -204,7 +209,7 @@
 
           <!-- YAML 编辑区 -->
           <el-input v-model="yamlText" type="textarea" :rows="yamlRows" class="yaml-area"
-            placeholder="点击「AI 转换」或「本地转换」生成剧本……&#10;&#10;也可以直接在此编辑 YAML" @input="onYamlEdit" />
+            :placeholder="yamlPlaceholder" @input="onYamlEdit" />
 
           <!-- 状态提示 -->
           <div class="output-footer">
@@ -224,9 +229,9 @@
               <el-icon style="margin-right:6px;color:var(--el-color-success)">
                 <SuccessFilled />
               </el-icon>
-              转换完成（章节 {{ store.chapterCount }} → 幕 {{ store.screenplay?.screenplay?.acts?.length || '?' }}）
-              <span v-if="store.incrementalMode && store.canContinueConvert" class="incremental-hint">
-                · 还有 {{ store.pendingChapters.length }} 章待转换
+              转换完成 · 全局剧本: {{ store.convertedActCount }} 幕 · 独立章节: {{ store.chapterYamls?.length ?? 0 }} 章
+              <span v-if="viewMode === 'chapter' && (store.chapterYamls?.length ?? 0) > 0" class="incremental-hint">
+                · 当前: {{ store.chapterTexts[store.activeChapterIndex]?.title || `第${store.activeChapterIndex + 1}章` }}
               </span>
             </div>
             <div v-else class="status idle">
@@ -258,22 +263,60 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, WarningFilled, SuccessFilled, ArrowDown, Tools } from '@element-plus/icons-vue'
 import { useNovelStore } from '@/stores/novel'
+import { buildYamlOutput } from '@/utils/converter.js'
 
 const router = useRouter()
 const store = useNovelStore()
 
-// YAML 编辑
-const yamlText = ref('')
 const charTableExpanded = ref(true)
 const localChars = ref([])
 
-watch(() => store.yamlOutput, (v) => { if (v) yamlText.value = v })
+/* 可编辑的 YAML 文本 */
+const yamlText = ref('')
+
+/* 视图模式：global / chapter */
+const viewMode = ref('global')
 
 watch(() => store.characters, (chars) => {
   if (chars && chars.length) {
     localChars.value = JSON.parse(JSON.stringify(chars))
   }
 }, { immediate: true, deep: true })
+
+/* 切换视图时加载对应的 YAML */
+function loadYamlForView() {
+  if (!store.hasResult) { yamlText.value = ''; return }
+  if (viewMode.value === 'chapter') {
+    yamlText.value = store.currentChapterYaml
+  } else {
+    yamlText.value = store.globalYaml
+  }
+}
+
+watch(viewMode, () => { loadYamlForView() })
+
+/* 切换章节时更新 YAML 编辑区 */
+watch(() => store.activeChapterIndex, () => {
+  if (viewMode.value === 'chapter') { loadYamlForView() }
+})
+
+/* 编辑后同步回 store */
+let editTimer = null
+function onYamlEdit(val) {
+  clearTimeout(editTimer)
+  editTimer = setTimeout(() => {
+    if (viewMode.value === 'global') {
+      store.globalYaml = val
+    }
+  }, 500)
+}
+
+const yamlPlaceholder = computed(() => {
+  if (store.hasResult && viewMode.value === 'chapter' && !store.currentChapterYaml) {
+    return '该章节暂无独立剧本'
+  }
+  return '点击「AI 转换」或「本地转换」生成剧本……'
+})
 
 const yamlRows = computed(() => {
   if (store.hasResult && store.characters.length > 0 && charTableExpanded.value) {
@@ -282,16 +325,6 @@ const yamlRows = computed(() => {
   return 18
 })
 
-// 转换按钮文字
-const convertButtonText = computed(() => {
-  if (store.isConverting) return '转换中...'
-  if (store.incrementalMode && store.canContinueConvert) {
-    return `增量转换 (${store.pendingChapters.length}章)`
-  }
-  return 'AI 转换'
-})
-
-// 章节展开状态
 const expanded = ref({})
 const editTimestamps = ref({})
 
@@ -322,82 +355,74 @@ function doAutoSplit() {
   }
 }
 
-// 默认展开所有章节
 watch(() => store.chapterTexts.length, (len) => {
   for (let i = 0; i < len; i++) {
     if (expanded.value[i] === undefined) expanded.value[i] = true
   }
 }, { immediate: true })
 
-/* ===== 转换命令处理 ===== */
-async function handleConvertCommand(command) {
-  // 检查章节数量
-  if (store.chapterCount < 3 && command !== 'local') {
+/* ===== 转换 ===== */
+async function handleConvert() {
+  if (store.chapterCount < 3) {
     store.error = `当前仅检测到 ${store.chapterCount} 章，至少需要 3 章`
     ElMessage.warning(store.error)
     return
   }
-
-  // 检查 API Key（本地转换不需要）
-  if (command !== 'local' && !store.apiKey) {
+  if (!store.apiKey) {
     ElMessage.warning('请先配置 API Key')
     return
   }
-
-  let success = false
-
-  switch (command) {
-    case 'smart':
-      success = await store.runAIConversionSmart()
-      if (success) {
-        ElMessage.success('智能转换完成！')
-      }
-      break
-    case 'full':
-      success = await store.runAIConversion()
-      if (success) {
-        ElMessage.success('全量转换完成！')
-      }
-      break
-    case 'incremental':
-      if (!store.canContinueConvert) {
-        ElMessage.warning('没有待转换的章节')
-        return
-      }
-      success = await store.runAIIncrementalConversion()
-      if (success) {
-        ElMessage.success('增量转换完成！')
-      }
-      break
-    case 'local':
-      success = await store.runLocalConversion()
-      if (success) {
-        ElMessage.success('本地转换完成！')
-      }
-      break
-  }
-
-  if (!success && store.error) {
+  const success = await store.runAIConversion()
+  if (success) {
+    ElMessage.success(`转换完成！全局剧本 ${store.convertedActCount} 幕，${store.chapterYamls?.length ?? 0} 章独立剧本`)
+    viewMode.value = 'global'
+  } else if (store.error) {
     ElMessage.error(store.error)
   }
 }
 
-function downloadYaml() {
-  const content = yamlText.value
+async function handleConvertLocal() {
+  if (store.chapterCount < 3) {
+    store.error = `当前仅检测到 ${store.chapterCount} 章，至少需要 3 章`
+    ElMessage.warning(store.error)
+    return
+  }
+  const success = await store.runLocalConversion()
+  if (success) {
+    ElMessage.success(`本地转换完成！全局剧本 ${store.convertedActCount} 幕，${store.chapterYamls?.length ?? 0} 章独立剧本`)
+    viewMode.value = 'global'
+  } else if (store.error) {
+    ElMessage.error(store.error)
+  }
+}
+
+function downloadGlobalYaml() {
+  const content = store.globalYaml
   if (!content) return
   const blob = new Blob([content], { type: 'text/yaml;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `剧本_${store.metadata.title || 'untitled'}.yaml`
+  a.download = `全局剧本_${store.metadata.title || 'untitled'}.yaml`
   a.click()
   URL.revokeObjectURL(url)
-  ElMessage.success('下载成功')
+  ElMessage.success('全局剧本下载成功')
 }
 
-function onYamlEdit(val) {
-  // 手动编辑时同步回 store 便于下载
-  store.yamlOutput = val
+function downloadChapterYaml() {
+  const content = store.currentChapterYaml
+  if (!content) return
+  const idx = store.activeChapterIndex
+  const ch = store.chapterTexts[idx]
+  const chTitle = ch?.title || `chapter_${idx + 1}`
+  const blob = new Blob([content], { type: 'text/yaml;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `章节剧本_${chTitle}_${store.metadata.title || 'untitled'}.yaml`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success(`「${chTitle}」独立剧本下载成功`)
 }
 
 let syncTimer = null
@@ -409,20 +434,21 @@ function debounceSyncChars() {
 function syncChars() {
   if (!store.screenplay?.screenplay) return
   store.screenplay.screenplay.characters = JSON.parse(JSON.stringify(localChars.value))
-  store.yamlOutput = buildYamlOutput(store.screenplay)
-  yamlText.value = store.yamlOutput
+  store.globalYaml = buildYamlOutput(store.screenplay)
+  store._buildChapterScreenplays()
   store._save()
 }
 
-// 导入 buildYamlOutput
-import { buildYamlOutput } from '@/utils/converter.js'
-
-// 页面离开时保存
 onMounted(() => {
-  // 如果有保存的进度，恢复到 yamlText
-  if (store.yamlOutput) {
-    yamlText.value = store.yamlOutput
+  if (store.hasResult) {
+    viewMode.value = 'global'
+    loadYamlForView()
   }
+})
+
+// 转换完成后自动加载 YAML
+watch(() => store.globalYaml, (val) => {
+  if (val) { loadYamlForView() }
 })
 </script>
 
@@ -773,6 +799,22 @@ onMounted(() => {
 
 .security-hint {
   color: var(--color-text-secondary);
+}
+
+/* ===== 分章页签 ===== */
+.chapter-tabs {
+  flex-shrink: 0;
+}
+
+.chapter-tabs :deep(.el-tabs__item) {
+  font-size: 12px;
+  padding: 0 12px;
+  height: 30px;
+  line-height: 30px;
+}
+
+.chapter-tabs :deep(.el-tabs__nav) {
+  border: none;
 }
 
 /* ===== 滚动条 ===== */

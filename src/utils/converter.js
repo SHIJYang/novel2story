@@ -249,7 +249,250 @@ export function buildYamlOutput(screenplayObj) {
   return lines.join('\n')
 }
 
+/**
+ * 从全局剧本中提取某一章的独立剧本
+ * @param {object} globalScreenplay - 完整 screenplay 对象
+ * @param {number} actIndex - 0-based 幕索引
+ * @returns {object|null} 提取出的单章 screenplay 对象
+ */
+export function extractChapterScreenplay(globalScreenplay, actIndex) {
+  if (!globalScreenplay?.screenplay) return null
+  const sp = globalScreenplay.screenplay
+  const act = sp.acts[actIndex]
+  if (!act) return null
+
+  // 收集该章节中实际出现的角色 ID
+  const usedCharIds = new Set()
+  for (const scene of act.scenes || []) {
+    for (const cid of scene.characters || []) usedCharIds.add(cid)
+    for (const el of scene.elements || []) {
+      if (el.type === 'dialogue' && el.character) usedCharIds.add(el.character)
+    }
+  }
+
+  const chapterChars = sp.characters.filter(c => usedCharIds.has(c.id))
+
+  return {
+    screenplay: {
+      title: sp.title,
+      author: sp.author,
+      source: sp.source,
+      sourceChapters: 1,
+      createdAt: sp.createdAt,
+      version: sp.version,
+      chapterIndex: actIndex + 1,
+      chapterTitle: act.title || `第${actIndex + 1}章`,
+      characters: chapterChars,
+      acts: [{ ...act, scenes: (act.scenes || []).map(s => ({ ...s })) }],
+    },
+  }
+}
+
+/**
+ * 构建单章剧本的 YAML 输出
+ */
+export function buildChapterYamlOutput(chapterSc, actIndex) {
+  const s = chapterSc.screenplay
+  const lines = []
+  lines.push('# ============================================')
+  lines.push(`# 章节剧本：${s.chapterTitle || `第${actIndex + 1}章`}`)
+  lines.push('# ============================================')
+  lines.push('screenplay:')
+  lines.push(`  title: "${escapeYaml(s.title)}"`)
+  lines.push(`  author: "${escapeYaml(s.author)}"`)
+  lines.push(`  source: "${escapeYaml(s.source)}"`)
+  lines.push(`  sourceChapters: 1`)
+  lines.push(`  chapterIndex: ${s.chapterIndex}`)
+  lines.push(`  chapterTitle: "${escapeYaml(s.chapterTitle)}"`)
+  lines.push(`  createdAt: "${s.createdAt}"`)
+  lines.push(`  version: "${s.version}"`)
+  lines.push('')
+  lines.push('  characters:')
+  for (const c of s.characters) {
+    lines.push(`    - id: "${c.id}"`)
+    lines.push(`      name: "${escapeYaml(c.name)}"`)
+    if (c.alias?.length) lines.push(`      alias: [${c.alias.map(a => `"${escapeYaml(a)}"`).join(', ')}]`)
+    lines.push(`      description: "${escapeYaml(c.description)}"`)
+    lines.push(`      role: ${c.role}`)
+    if (c.arc) lines.push(`      arc: "${escapeYaml(c.arc)}"`)
+  }
+  lines.push('')
+  lines.push('  acts:')
+  for (const act of s.acts) {
+    lines.push(`    - id: "${act.id}"`)
+    lines.push(`      title: "${escapeYaml(act.title)}"`)
+    lines.push(`      summary: "${escapeYaml(act.summary)}"`)
+    lines.push('      scenes:')
+    for (const scn of act.scenes) {
+      lines.push(`        - id: "${scn.id}"`)
+      lines.push(`          heading: "${escapeYaml(scn.heading)}"`)
+      lines.push(`          location: "${escapeYaml(scn.location)}"`)
+      lines.push(`          time: "${escapeYaml(scn.time)}"`)
+      lines.push(`          summary: "${escapeYaml(scn.summary)}"`)
+      lines.push(`          characters: [${scn.characters.map(c => `"${c}"`).join(', ')}]`)
+      lines.push('          elements:')
+      for (const el of scn.elements) {
+        lines.push(`            - type: ${el.type}`)
+        if (el.type === 'dialogue') {
+          lines.push(`              character: "${el.character}"`)
+          if (el.parenthetical) lines.push(`              parenthetical: "${escapeYaml(el.parenthetical)}"`)
+          lines.push(`              content: "${escapeYaml(el.content)}"`)
+        } else {
+          const c = el.content || ''
+          if (c.includes('\n')) {
+            lines.push('              content: >-')
+            for (const l of c.split('\n')) lines.push(`                ${escapeYaml(l)}`)
+          } else {
+            lines.push(`              content: "${escapeYaml(c)}"`)
+          }
+        }
+      }
+    }
+  }
+  return lines.join('\n')
+}
+
 function escapeYaml(str) {
   if (!str) return ''
   return String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '').replace(/\t/g, '\\t')
+}
+
+/* ================================================
+ * 跨章角色合并引擎
+ * 将逐章生成的独立剧本合并为全局剧本
+ * ================================================ */
+
+/**
+ * 合并多个章节的剧本结果为一个全局剧本
+ * @param {Array<{parsed: object, yaml: string}>} chapterResults - 每章解析后的结果
+ * @param {object} meta - {title, author, source}
+ * @returns {object} 全局 screenplay 对象
+ */
+export function mergeChapterResults(chapterResults, meta = {}) {
+  const allCharNames = new Map() // name \u2192 { character, localIds: Set }
+  const allActs = []
+
+  // ---- 第1遍：收集所有角色的名字 ----
+  for (const result of chapterResults) {
+    if (!result.parsed?.screenplay) continue
+    const sp = result.parsed.screenplay
+    for (const c of sp.characters || []) {
+      if (!c.name) continue
+      if (!allCharNames.has(c.name)) {
+        allCharNames.set(c.name, { ...c, localIds: new Set([c.id]) })
+      } else {
+        const existing = allCharNames.get(c.name)
+        existing.localIds.add(c.id)
+        // 合并补全信息
+        if (c.description && c.description !== existing.description) {
+          if (c.description.length > existing.description.length) existing.description = c.description
+        }
+        if (c.arc && !existing.arc) existing.arc = c.arc
+        if (c.alias?.length && !existing.alias?.length) existing.alias = c.alias
+      }
+    }
+  }
+
+  // ---- 分配全局统一 ID ----
+  const nameToGlobalId = new Map()
+  const globalChars = []
+  let globalIdx = 1
+  for (const [name, char] of allCharNames) {
+    const gid = `char_${String(globalIdx).padStart(3, '0')}`
+    nameToGlobalId.set(name, gid)
+    globalChars.push({
+      id: gid,
+      name: char.name,
+      alias: char.alias || [],
+      description: char.description || '',
+      role: char.role || 'supporting',
+      arc: char.arc || '',
+    })
+    globalIdx++
+  }
+
+  // ---- 第2遍：合并 acts，重映射角色 ID ----
+  function remapCharId(localId) {
+    for (const [name, char] of allCharNames) {
+      if (char.localIds.has(localId)) return nameToGlobalId.get(name) || localId
+    }
+    return localId
+  }
+
+  for (let i = 0; i < chapterResults.length; i++) {
+    const result = chapterResults[i]
+    if (!result.parsed?.screenplay?.acts) continue
+    for (const act of result.parsed.screenplay.acts) {
+      const remappedScenes = (act.scenes || []).map(scene => ({
+        ...scene,
+        characters: (scene.characters || []).map(remapCharId),
+        elements: (scene.elements || []).map(el => {
+          if (el.type === 'dialogue' && el.character) {
+            return { ...el, character: remapCharId(el.character) }
+          }
+          return { ...el }
+        }),
+      }))
+      allActs.push({
+        ...act,
+        scenes: remappedScenes,
+      })
+    }
+  }
+
+  return {
+    screenplay: {
+      title: meta.title || '',
+      author: meta.author || '',
+      source: meta.source || '',
+      sourceChapters: chapterResults.length,
+      createdAt: new Date().toISOString().split('T')[0],
+      version: '1.0',
+      characters: globalChars,
+      acts: allActs,
+    },
+  }
+}
+
+/**
+ * 从已解析的剧本中提取角色表的 YAML 片段（仅 characters 部分）
+ * @param {object} screenplay
+ * @returns {string}
+ */
+export function buildCharactersYaml(screenplay) {
+  const chars = screenplay?.screenplay?.characters
+  if (!chars || chars.length === 0) return ''
+  const lines = []
+  for (const c of chars) {
+    lines.push(`  - id: "${c.id}"`)
+    lines.push(`    name: "${escapeYaml(c.name)}"`)
+    lines.push(`    description: "${escapeYaml(c.description)}"`)
+    lines.push(`    role: ${c.role}`)
+    if (c.arc) lines.push(`    arc: "${escapeYaml(c.arc)}"`)
+  }
+  return lines.join('\n')
+}
+
+/**
+ * 从已解析的剧本中生成剧情摘要（用于下一章的前文提要）
+ * @param {object} screenplay
+ * @returns {string}
+ */
+export function buildContextSummary(screenplay) {
+  if (!screenplay?.screenplay?.acts) return ''
+  const acts = screenplay.screenplay.acts
+  const lines = []
+  for (const act of acts) {
+    lines.push(`- ${act.title || '章节'}`)
+    if (act.summary) lines.push(`  剧情: ${act.summary}`)
+    const scenes = act.scenes || []
+    const locs = scenes.map(s => s.location || s.heading?.split('-')?.[0]?.trim() || '').filter(Boolean)
+    if (locs.length > 0) lines.push(`  场景: ${[...new Set(locs)].join('\u3001')}`)
+    const chars = new Set()
+    for (const s of scenes) {
+      for (const cid of s.characters || []) chars.add(cid)
+    }
+    if (chars.size > 0) lines.push(`  角色: ${Array.from(chars).join(', ')}`)
+  }
+  return lines.join('\n')
 }
