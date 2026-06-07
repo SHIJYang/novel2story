@@ -51,10 +51,21 @@
                       :type="i < 3 ? (i === 0 ? 'danger' : i === 1 ? 'warning' : 'primary') : 'info'">
                       {{ i + 1 }}
                     </el-tag>
+                    <!-- 转换状态 -->
+                    <el-tag v-if="store.chapterConverted[i]" size="small" type="success" effect="dark" style="margin-left:4px">
+                      ✓
+                    </el-tag>
                   </div>
                   <el-input :model-value="ch.title" size="small" class="chapter-title-input" placeholder="章节标题"
                     @click.stop @input="(v) => store.updateChapterTitle(i, v)" />
                   <div class="chapter-actions" @click.stop>
+                    <!-- 单章转换按钮 -->
+                    <el-button size="small" type="primary" text
+                      :loading="store.singleChapterConverting && store.currentConvertingChapter === (ch.title || `第${i + 1}章`)"
+                      :disabled="store.isConverting || (store.singleChapterConverting && store.currentConvertingChapter !== (ch.title || `第${i + 1}章`))"
+                      @click="handleSingleChapterConvert(i)">
+                      🤖 转换
+                    </el-button>
                     <el-button size="small" text :disabled="i === 0" @click="store.moveChapter(i, i - 1)">▲</el-button>
                     <el-button size="small" text :disabled="i === store.chapterTexts.length - 1"
                       @click="store.moveChapter(i, i + 1)">▼</el-button>
@@ -103,9 +114,6 @@
               <el-button type="primary" :loading="store.isConverting" :disabled="store.chapterCount < 3"
                 @click="handleConvert">
                 🤖 AI 转换
-              </el-button>
-              <el-button :disabled="store.chapterCount < 3" @click="handleConvertLocal">
-                ⚙️ 本地转换
               </el-button>
 
               <template v-if="store.hasResult">
@@ -381,20 +389,22 @@ async function handleConvert() {
   }
 }
 
-async function handleConvertLocal() {
-  if (store.chapterCount < 3) {
-    store.error = `当前仅检测到 ${store.chapterCount} 章，至少需要 3 章`
-    ElMessage.warning(store.error)
+/* ===== 单章转换 ===== */
+async function handleSingleChapterConvert(index) {
+  if (!store.apiKey) {
+    ElMessage.warning('请先配置 API Key')
     return
   }
-  const success = await store.runLocalConversion()
+  const success = await store.runSingleChapterConversion(index)
   if (success) {
-    ElMessage.success(`本地转换完成！全局剧本 ${store.convertedActCount} 幕，${store.chapterYamls?.length ?? 0} 章独立剧本`)
-    viewMode.value = 'global'
+    viewMode.value = 'chapter'
+    loadYamlForView()
+    ElMessage.success(`「${store.chapterTexts[index]?.title || `第${index + 1}章`}」转换完成`)
   } else if (store.error) {
     ElMessage.error(store.error)
   }
 }
+
 
 function downloadGlobalYaml() {
   const content = store.globalYaml
