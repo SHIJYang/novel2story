@@ -184,6 +184,9 @@ export async function convertChapterWithAI(chapter, options = {}) {
     timeout = 180000,
   } = options
 
+  // 判断是否为 DeepSeek（通过 model 名称或 endpoint 判断）
+  const isDeepSeek = model.startsWith('deepseek') || endpoint.includes('api.deepseek.com')
+
   const requestBody = {
     model,
     messages: [
@@ -195,6 +198,9 @@ export async function convertChapterWithAI(chapter, options = {}) {
     ],
     temperature,
     max_tokens: maxTokens,
+    ...(isDeepSeek
+      ? { thinking: { type: 'enabled' }, reasoning_effort: 'high' }
+      : {}),
   }
 
   const headers = {

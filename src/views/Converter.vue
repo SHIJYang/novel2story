@@ -129,8 +129,8 @@
               </template>
             </div>
             <div class="toolbar-right">
-              <el-input v-model="store.apiKey" type="password" size="small" placeholder="API Key" show-password
-                clearable style="width:140px" @input="(v) => store.setApiKey(v)" />
+              <el-input v-model="store.apiKey" type="password" size="small" placeholder="DeepSeek API Key" show-password
+                clearable style="width:180px" @input="(v) => store.setApiKey(v)" />
               <el-checkbox :model-value="store.rememberKey" size="small" @change="(v) => store.setRememberKey(v)">
                 记住
               </el-checkbox>

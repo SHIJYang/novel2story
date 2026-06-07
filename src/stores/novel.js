@@ -56,10 +56,9 @@ export const useNovelStore = defineStore('novel', {
       isConverting: false,
       error: null,
 
-      apiKey: storage.getRaw(API_KEY_STORAGE) || 'sk-6zRjJlpnuNlHGLiCkNJqEfUBzMtuzqXqYqDrF0qG8eJOEXkO',
-      provider: 'agnes',
-      endpoint: 'https://apihub.agnes-ai.com/v1/chat/completions',
-      model: 'agnes-2.0-flash',
+      apiKey: storage.getRaw(API_KEY_STORAGE) || '',
+      endpoint: 'https://api.deepseek.com/v1/chat/completions',
+      model: 'deepseek-v4-flash',
       rememberKey: !!storage.getRaw(API_KEY_STORAGE),
 
       inputMode: 'input',
@@ -200,6 +199,7 @@ export const useNovelStore = defineStore('novel', {
     },
     setModel(model) { this.model = model },
     setEndpoint(ep) { this.endpoint = ep },
+
 
     /* ===== 解析 YAML ===== */
     _parseYamlToScreenplay(yamlString) {
