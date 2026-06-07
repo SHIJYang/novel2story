@@ -193,9 +193,7 @@
 <script setup>
 const principles = [
   { icon: '🎯', title: '语义保真', desc: '保留原著叙事结构(章节→幕),同时映射到标准剧本元素(场景、对白、动作)。' },
-  { icon: '✏️', title: '人类可编辑', desc: 'YAML 比 JSON/XML 更适合编剧手工编辑,不需要专业软件也能修改。' },
-  { icon: '🔌', title: '工具链友好', desc: '可双向转换为 Fountain、FDX、PDF 等标准剧本格式,每个字段有明确语义。' },
-  { icon: '🔧', title: '渐进增强', desc: '所有中间状态都是合法 Schema--从"只有文本"到"完整剧本"平滑过渡。' },
+  { icon: '✏️', title: '可编辑', desc: 'YAML 比 JSON/XML 更适合编剧手工编辑,不需要专业软件也能修改。' },
 ]
 
 const metaFields = [
